@@ -1,7 +1,7 @@
 An incredibly simple interval timer, made with ChatGPT's help for personal use. You can install it from the releases using dpkg -i.
 
 
-![Application](schermata.png)
+![Application](schermata2.png)
 
 
 # Installation
