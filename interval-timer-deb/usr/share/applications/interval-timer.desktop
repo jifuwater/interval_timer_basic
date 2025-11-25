@@ -1,9 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Name=Interval Timer
-Comment=Timer intervallato con workout e rest
-Exec=interval-timer
-Icon=interval-timer
-Terminal=false
-Type=Application
-Categories=Utility;Application;
