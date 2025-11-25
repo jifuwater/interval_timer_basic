@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+
+import sys, os, threading
+from PyQt6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QLabel, QPushButton,
+    QHBoxLayout, QDialog, QLineEdit, QFormLayout, QSizePolicy
+)
+from PyQt6.QtGui import QFont, QColor, QPalette
+from PyQt6.QtCore import QTimer, Qt
+
+# Paths for audio
+SCRIPT_DIR = "/usr/share/interval-timer"
+APPLAUSE_FILE = os.path.join(SCRIPT_DIR, "applausi.mp3")
+BELL_FILE = os.path.join(SCRIPT_DIR, "campanella.mp3")
+
+
+class IntervalTimer(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Interval Timer")
+        self.setFixedSize(320, 280)
+
+        # Colors & fonts
+        self.colors = {
+            "bg": "#2d3038",
+            "work": "#bf616a",
+            "rest": "#a3be8c",
+            "start": "#a3be8c",
+            "reset": "#bf616a",
+            "settings": "#ebcb8b",
+            "text": "#2d3038",
+            "pressed": "#3e5359"
+        }
+        self.fonts = {
+            "timer": QFont("Helvetica", 54, QFont.Weight.Bold),
+            "phase": QFont("Helvetica", 16, QFont.Weight.Bold),
+            "button": QFont("Helvetica", 14, QFont.Weight.Bold)
+        }
+
+        palette = self.palette()
+        palette.setColor(QPalette.ColorRole.Window, QColor(self.colors["bg"]))
+        self.setPalette(palette)
+
+        # Timer state
+        self.work_time = 45
+        self.rest_time = 15
+        self.is_running = False
+        self.is_work_phase = True
+        self.remaining = self.work_time
+
+        # Qt Timer
+        self.timer = QTimer(interval=1000, timeout=self.update_timer)
+
+        # UI setup
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(spacing=8)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Phase label
+        self.phase_label = QLabel("Workout", alignment=Qt.AlignmentFlag.AlignCenter)
+        self.phase_label.setFont(self.fonts["phase"])
+        self.phase_label.setStyleSheet(f"color: {self.colors['work']}")
+        layout.addWidget(self.phase_label)
+
+        # Timer label
+        self.label = QLabel(self.format_time(self.remaining), alignment=Qt.AlignmentFlag.AlignCenter)
+        self.label.setFont(self.fonts["timer"])
+        self.label.setStyleSheet(f"color: {self.colors['work']}")
+        layout.addWidget(self.label)
+
+        # Add vertical spacing before buttons
+        layout.addSpacing(40)
+
+        # First row: Start button (full width)
+        start_btn = QPushButton("Start")
+        start_btn.setFont(self.fonts["button"])
+        start_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        start_btn.setFixedHeight(40)
+        start_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.colors['start']};
+                color: {self.colors['text']};
+                font-weight: bold;
+                border-radius: 20px;
+            }}
+            QPushButton:pressed {{
+                background-color: {self.colors['pressed']};
+            }}
+        """)
+        start_btn.clicked.connect(self.start_timer)
+        layout.addWidget(start_btn)
+
+        # Second row: Set and Reset buttons
+        second_row = QHBoxLayout(spacing=8)
+        for text, color, callback in [
+            ("Set", self.colors["settings"], self.open_settings),
+            ("Reset", self.colors["reset"], self.reset_timer)
+        ]:
+            btn = QPushButton(text)
+            btn.setFont(self.fonts["button"])
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            btn.setFixedHeight(40)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {color};
+                    color: {self.colors['text']};
+                    font-weight: bold;
+                    border-radius: 20px;
+                }}
+                QPushButton:pressed {{
+                    background-color: {self.colors['pressed']};
+                }}
+            """)
+            btn.clicked.connect(callback)
+            second_row.addWidget(btn)
+
+        layout.addLayout(second_row)
+        self.setLayout(layout)
+
+    def format_time(self, seconds):
+        return f"{seconds // 60:02}:{seconds % 60:02}"
+
+    def play_sound(self, file):
+        threading.Thread(
+            target=lambda: os.system(f"ffplay -nodisp -autoexit -loglevel quiet '{file}'"),
+            daemon=True
+        ).start()
+
+    def update_timer(self):
+        if not self.is_running:
+            return
+        if self.remaining > 0:
+            self.remaining -= 1
+        else:
+            self.play_sound(APPLAUSE_FILE if self.is_work_phase else BELL_FILE)
+            self.is_work_phase = not self.is_work_phase
+            self.remaining = self.work_time if self.is_work_phase else self.rest_time
+            color = self.colors["work"] if self.is_work_phase else self.colors["rest"]
+            self.phase_label.setText("Workout" if self.is_work_phase else "Rest")
+            self.phase_label.setStyleSheet(f"color: {color}")
+            self.label.setStyleSheet(f"color: {color}")
+        self.label.setText(self.format_time(self.remaining))
+
+    def start_timer(self):
+        if not self.is_running:
+            self.is_running = True
+            self.timer.start()
+
+    def reset_timer(self):
+        self.is_running = False
+        self.timer.stop()
+        self.is_work_phase = True
+        self.remaining = self.work_time
+        self.phase_label.setText("Workout")
+        self.phase_label.setStyleSheet(f"color: {self.colors['work']}")
+        self.label.setText(self.format_time(self.remaining))
+        self.label.setStyleSheet(f"color: {self.colors['work']}")
+
+    def open_settings(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Timer Settings")
+        dialog.setFixedSize(280, 180)
+        dialog.setStyleSheet(f"background-color: {self.colors['bg']}")
+
+        layout = QFormLayout()
+        workout_input = QLineEdit(str(self.work_time))
+        rest_input = QLineEdit(str(self.rest_time))
+        layout.addRow("Workout (s):", workout_input)
+        layout.addRow("Rest (s):", rest_input)
+
+        confirm = QPushButton("Confirm")
+        confirm.setFont(self.fonts["button"])
+        confirm.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # Match other buttons
+        confirm.setFixedHeight(40)  # Rounded height like others
+        confirm.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.colors['settings']};
+                color: {self.colors['text']};
+                font-weight: bold;
+                border-radius: 20px;
+            }}
+            QPushButton:pressed {{
+                background-color: {self.colors['pressed']};
+            }}
+        """)
+        confirm.clicked.connect(lambda: self.confirm_settings(workout_input, rest_input, dialog))
+        layout.addWidget(confirm)
+
+        dialog.setLayout(layout)
+        dialog.exec()
+
+    def confirm_settings(self, workout_input, rest_input, dialog):
+        try:
+            work, rest = int(workout_input.text()), int(rest_input.text())
+            if work > 0 and rest > 0:
+                self.work_time, self.rest_time = work, rest
+                self.reset_timer()
+                dialog.accept()
+        except ValueError:
+            pass
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = IntervalTimer()
+    window.show()
+    sys.exit(app.exec())
+
